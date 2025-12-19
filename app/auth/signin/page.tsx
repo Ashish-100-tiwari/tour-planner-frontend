@@ -33,7 +33,8 @@ export default function SigninPage() {
         setLoading(true);
 
         try {
-            const response = await fetch('http://localhost:8000/auth/signin', {
+            const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+            const response = await fetch(`${apiUrl}/auth/signin`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',

@@ -3,11 +3,18 @@
 import { useState, useRef, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 
+interface JourneyDetails {
+    origin: string;
+    destination: string;
+}
+
 interface Message {
     id: string;
     role: 'user' | 'assistant';
     content: string;
     timestamp: Date;
+    map_image_url?: string;
+    journey_details?: JourneyDetails;
 }
 
 export default function DashboardPage() {
@@ -24,6 +31,22 @@ export default function DashboardPage() {
         const storedUserName = localStorage.getItem('userName') || 'User';
         setUserName(storedUserName);
 
+        // Load saved messages from localStorage
+        const savedMessages = localStorage.getItem('chatMessages');
+        if (savedMessages) {
+            try {
+                const parsed = JSON.parse(savedMessages);
+                // Convert timestamp strings back to Date objects
+                const messagesWithDates = parsed.map((msg: any) => ({
+                    ...msg,
+                    timestamp: new Date(msg.timestamp)
+                }));
+                setMessages(messagesWithDates);
+            } catch (error) {
+                console.error('Failed to load saved messages:', error);
+            }
+        }
+
         // Focus input on mount
         inputRef.current?.focus();
     }, []);
@@ -31,6 +54,11 @@ export default function DashboardPage() {
     useEffect(() => {
         // Scroll to bottom when messages change
         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+
+        // Save messages to localStorage whenever they change
+        if (messages.length > 0) {
+            localStorage.setItem('chatMessages', JSON.stringify(messages));
+        }
     }, [messages]);
 
     const handleSubmit = async (e: React.FormEvent) => {
@@ -63,14 +91,16 @@ export default function DashboardPage() {
                 content: msg.content
             }));
 
+            const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+
             console.log('Sending chat request:', {
-                url: 'http://localhost:8000/v1/chat/completions',
+                url: `${apiUrl}/v1/chat/completions`,
                 token: token ? `${token.substring(0, 20)}...` : 'NO TOKEN',
                 messagesCount: apiMessages.length
             });
 
             // Call the chat completions API
-            const response = await fetch('http://localhost:8000/v1/chat/completions', {
+            const response = await fetch(`${apiUrl}/v1/chat/completions`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -109,12 +139,16 @@ export default function DashboardPage() {
 
             // Extract assistant message from response
             const assistantContent = data.choices?.[0]?.message?.content || 'Sorry, I could not generate a response.';
+            const mapImageUrl = data.map_image_url;
+            const journeyDetails = data.journey_details;
 
             const assistantMessage: Message = {
                 id: data.id || (Date.now() + 1).toString(),
                 role: 'assistant',
                 content: assistantContent,
-                timestamp: new Date()
+                timestamp: new Date(),
+                map_image_url: mapImageUrl,
+                journey_details: journeyDetails
             };
 
             setMessages(prev => [...prev, assistantMessage]);
@@ -149,9 +183,17 @@ export default function DashboardPage() {
         }
     };
 
+    const handleClearChat = () => {
+        if (confirm('Are you sure you want to clear all chat history?')) {
+            setMessages([]);
+            localStorage.removeItem('chatMessages');
+        }
+    };
+
     const handleSignOut = () => {
         localStorage.removeItem('userName');
         localStorage.removeItem('token');
+        localStorage.removeItem('chatMessages');
         router.push('/');
     };
 
@@ -163,12 +205,22 @@ export default function DashboardPage() {
                     <h1 className="text-xl font-semibold text-black dark:text-white">
                         Tour Planner AI
                     </h1>
-                    <button
-                        onClick={handleSignOut}
-                        className="px-4 py-2 text-sm text-gray-600 dark:text-gray-400 hover:text-black dark:hover:text-white transition-colors"
-                    >
-                        Sign Out
-                    </button>
+                    <div className="flex items-center gap-3">
+                        {messages.length > 0 && (
+                            <button
+                                onClick={handleClearChat}
+                                className="px-4 py-2 text-sm text-gray-600 dark:text-gray-400 hover:text-black dark:hover:text-white transition-colors"
+                            >
+                                Clear Chat
+                            </button>
+                        )}
+                        <button
+                            onClick={handleSignOut}
+                            className="px-4 py-2 text-sm text-gray-600 dark:text-gray-400 hover:text-black dark:hover:text-white transition-colors"
+                        >
+                            Sign Out
+                        </button>
+                    </div>
                 </div>
             </header>
 
@@ -259,6 +311,39 @@ export default function DashboardPage() {
                                         <p className="text-sm leading-relaxed whitespace-pre-wrap">
                                             {message.content}
                                         </p>
+
+                                        {/* Display map image if available - Half screen layout */}
+                                        {message.role === 'assistant' && message.map_image_url && (
+                                            <div className="mt-6 -mx-6 -mb-4">
+                                                <div className="bg-gradient-to-br from-gray-50 to-gray-100 dark:from-gray-900 dark:to-gray-950 p-6 rounded-b-2xl border-t border-gray-200 dark:border-gray-700">
+                                                    <div className="flex flex-col items-center">
+                                                        <img
+                                                            src={message.map_image_url}
+                                                            alt={message.journey_details
+                                                                ? `Route from ${message.journey_details.origin} to ${message.journey_details.destination}`
+                                                                : 'Route Map'
+                                                            }
+                                                            className="w-full h-auto rounded-xl shadow-2xl"
+                                                            style={{
+                                                                maxHeight: '50vh',
+                                                                objectFit: 'contain'
+                                                            }}
+                                                        />
+                                                        {message.journey_details && (
+                                                            <div className="mt-4 px-6 py-3 bg-white dark:bg-black rounded-full shadow-lg">
+                                                                <p className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                                                                    <span className="text-green-600 dark:text-green-400">📍 {message.journey_details.origin}</span>
+                                                                    {' '}
+                                                                    <span className="text-gray-400 dark:text-gray-600">→</span>
+                                                                    {' '}
+                                                                    <span className="text-red-600 dark:text-red-400">📍 {message.journey_details.destination}</span>
+                                                                </p>
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        )}
                                     </div>
                                 </div>
                             ))}
