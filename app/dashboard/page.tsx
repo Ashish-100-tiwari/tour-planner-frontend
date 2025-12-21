@@ -17,12 +17,18 @@ interface Message {
     journey_details?: JourneyDetails;
 }
 
+interface MapData {
+    map_image_url: string;
+    journey_details: JourneyDetails;
+}
+
 export default function DashboardPage() {
     const router = useRouter();
     const [userName, setUserName] = useState('');
     const [messages, setMessages] = useState<Message[]>([]);
     const [inputValue, setInputValue] = useState('');
     const [isLoading, setIsLoading] = useState(false);
+    const [currentMapData, setCurrentMapData] = useState<MapData | null>(null);
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const inputRef = useRef<HTMLTextAreaElement>(null);
 
@@ -42,6 +48,17 @@ export default function DashboardPage() {
                     timestamp: new Date(msg.timestamp)
                 }));
                 setMessages(messagesWithDates);
+
+                // Find the most recent map data
+                for (let i = messagesWithDates.length - 1; i >= 0; i--) {
+                    if (messagesWithDates[i].map_image_url) {
+                        setCurrentMapData({
+                            map_image_url: messagesWithDates[i].map_image_url,
+                            journey_details: messagesWithDates[i].journey_details!
+                        });
+                        break;
+                    }
+                }
             } catch (error) {
                 console.error('Failed to load saved messages:', error);
             }
@@ -152,6 +169,14 @@ export default function DashboardPage() {
             };
 
             setMessages(prev => [...prev, assistantMessage]);
+
+            // Update current map data if new map is available
+            if (mapImageUrl && journeyDetails) {
+                setCurrentMapData({
+                    map_image_url: mapImageUrl,
+                    journey_details: journeyDetails
+                });
+            }
         } catch (error) {
             console.error('Chat error:', error);
 
@@ -186,6 +211,7 @@ export default function DashboardPage() {
     const handleClearChat = () => {
         if (confirm('Are you sure you want to clear all chat history?')) {
             setMessages([]);
+            setCurrentMapData(null);
             localStorage.removeItem('chatMessages');
         }
     };
@@ -198,10 +224,10 @@ export default function DashboardPage() {
     };
 
     return (
-        <div className="min-h-screen bg-white dark:bg-black flex flex-col">
+        <div className="h-screen bg-white dark:bg-black flex flex-col overflow-hidden">
             {/* Header */}
-            <header className="sticky top-0 z-50 bg-white/80 dark:bg-black/80 backdrop-blur-lg border-b border-gray-200 dark:border-gray-800">
-                <div className="max-w-5xl mx-auto px-6 py-4 flex justify-between items-center">
+            <header className="flex-shrink-0 z-50 bg-white/80 dark:bg-black/80 backdrop-blur-lg border-b border-gray-200 dark:border-gray-800">
+                <div className="max-w-full mx-auto px-6 py-4 flex justify-between items-center">
                     <h1 className="text-xl font-semibold text-black dark:text-white">
                         Tour Planner AI
                     </h1>
@@ -224,190 +250,226 @@ export default function DashboardPage() {
                 </div>
             </header>
 
-            {/* Main Chat Area */}
-            <main className="flex-1 overflow-y-auto">
-                <div className="max-w-4xl mx-auto px-6 py-8">
-                    {messages.length === 0 ? (
-                        // Welcome Screen
-                        <div className="flex flex-col items-center justify-center min-h-[60vh]">
-                            <div className="text-center mb-12">
-                                <h2 className="text-4xl md:text-5xl font-semibold text-black dark:text-white mb-4">
-                                    Hi {userName}! 👋
-                                </h2>
-                                <p className="text-xl text-gray-600 dark:text-gray-400">
-                                    How can I help you plan your trip today?
-                                </p>
+            {/* Two-Column Layout */}
+            <div className="flex-1 flex flex-col lg:flex-row overflow-hidden">
+                {/* Left Column - Chat */}
+                <div className="flex flex-col w-full lg:w-1/2 border-r border-gray-200 dark:border-gray-800 overflow-hidden">
+                    {/* Chat Area */}
+                    <main className="flex-1 overflow-y-auto">
+                        <div className="max-w-3xl mx-auto px-6 py-8">
+                            {messages.length === 0 ? (
+                                // Welcome Screen
+                                <div className="flex flex-col items-center justify-center min-h-[60vh]">
+                                    <div className="text-center mb-12">
+                                        <h2 className="text-4xl md:text-5xl font-semibold text-black dark:text-white mb-4">
+                                            Hi {userName}! 👋
+                                        </h2>
+                                        <p className="text-xl text-gray-600 dark:text-gray-400">
+                                            How can I help you plan your trip today?
+                                        </p>
+                                    </div>
+
+                                    {/* Suggestion Cards */}
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 w-full max-w-2xl">
+                                        <button
+                                            onClick={() => setInputValue('Plan a weekend trip to Paris')}
+                                            className="p-6 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl hover:border-gray-300 dark:hover:border-gray-700 transition-all text-left group"
+                                        >
+                                            <div className="text-2xl mb-3">✈️</div>
+                                            <h3 className="font-medium text-black dark:text-white mb-2 group-hover:underline">
+                                                Plan a weekend trip
+                                            </h3>
+                                            <p className="text-sm text-gray-600 dark:text-gray-400">
+                                                Get flight, hotel, and activity recommendations
+                                            </p>
+                                        </button>
+
+                                        <button
+                                            onClick={() => setInputValue('Find trains from New York to Boston')}
+                                            className="p-6 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl hover:border-gray-300 dark:hover:border-gray-700 transition-all text-left group"
+                                        >
+                                            <div className="text-2xl mb-3">🚂</div>
+                                            <h3 className="font-medium text-black dark:text-white mb-2 group-hover:underline">
+                                                Find transportation
+                                            </h3>
+                                            <p className="text-sm text-gray-600 dark:text-gray-400">
+                                                Search trains, flights, and buses
+                                            </p>
+                                        </button>
+
+                                        <button
+                                            onClick={() => setInputValue('Recommend hotels in Tokyo under $150/night')}
+                                            className="p-6 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl hover:border-gray-300 dark:hover:border-gray-700 transition-all text-left group"
+                                        >
+                                            <div className="text-2xl mb-3">🏨</div>
+                                            <h3 className="font-medium text-black dark:text-white mb-2 group-hover:underline">
+                                                Find accommodations
+                                            </h3>
+                                            <p className="text-sm text-gray-600 dark:text-gray-400">
+                                                Discover hotels matching your budget
+                                            </p>
+                                        </button>
+
+                                        <button
+                                            onClick={() => setInputValue('What are the best restaurants in Rome?')}
+                                            className="p-6 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl hover:border-gray-300 dark:hover:border-gray-700 transition-all text-left group"
+                                        >
+                                            <div className="text-2xl mb-3">🍽️</div>
+                                            <h3 className="font-medium text-black dark:text-white mb-2 group-hover:underline">
+                                                Discover food & activities
+                                            </h3>
+                                            <p className="text-sm text-gray-600 dark:text-gray-400">
+                                                Get top-rated recommendations
+                                            </p>
+                                        </button>
+                                    </div>
+                                </div>
+                            ) : (
+                                // Messages
+                                <div className="space-y-6 pb-32">
+                                    {messages.map((message) => (
+                                        <div
+                                            key={message.id}
+                                            className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
+                                        >
+                                            <div
+                                                className={`max-w-[85%] rounded-2xl px-6 py-4 ${message.role === 'user'
+                                                    ? 'bg-black dark:bg-white text-white dark:text-black'
+                                                    : 'bg-gray-100 dark:bg-gray-900 text-black dark:text-white border border-gray-200 dark:border-gray-800'
+                                                    }`}
+                                            >
+                                                <p className="text-sm leading-relaxed whitespace-pre-wrap">
+                                                    {message.content}
+                                                </p>
+                                            </div>
+                                        </div>
+                                    ))}
+
+                                    {isLoading && (
+                                        <div className="flex justify-start">
+                                            <div className="bg-gray-100 dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-2xl px-6 py-4">
+                                                <div className="flex space-x-2">
+                                                    <div className="w-2 h-2 bg-gray-400 dark:bg-gray-600 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
+                                                    <div className="w-2 h-2 bg-gray-400 dark:bg-gray-600 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></div>
+                                                    <div className="w-2 h-2 bg-gray-400 dark:bg-gray-600 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    <div ref={messagesEndRef} />
+                                </div>
+                            )}
+                        </div>
+                    </main>
+
+                    {/* Input Area */}
+                    <div className="flex-shrink-0 border-t border-gray-200 dark:border-gray-800 bg-white dark:bg-black p-6">
+                        <form onSubmit={handleSubmit} className="max-w-3xl mx-auto">
+                            <div className="relative bg-white dark:bg-black border-2 border-gray-200 dark:border-gray-800 rounded-2xl shadow-lg hover:border-gray-300 dark:hover:border-gray-700 transition-all focus-within:border-black dark:focus-within:border-white">
+                                <textarea
+                                    ref={inputRef}
+                                    value={inputValue}
+                                    onChange={(e) => setInputValue(e.target.value)}
+                                    onKeyDown={handleKeyDown}
+                                    placeholder="Message Tour Planner AI..."
+                                    rows={1}
+                                    className="w-full px-6 py-4 pr-14 bg-transparent text-black dark:text-white placeholder-gray-400 dark:placeholder-gray-600 resize-none outline-none text-base"
+                                    style={{
+                                        minHeight: '56px',
+                                        maxHeight: '200px',
+                                    }}
+                                />
+                                <button
+                                    type="submit"
+                                    disabled={!inputValue.trim() || isLoading}
+                                    className="absolute right-3 bottom-3 p-2 bg-black dark:bg-white text-white dark:text-black rounded-lg hover:bg-gray-800 dark:hover:bg-gray-200 disabled:opacity-30 disabled:cursor-not-allowed transition-all"
+                                >
+                                    <svg
+                                        className="w-5 h-5"
+                                        fill="none"
+                                        stroke="currentColor"
+                                        viewBox="0 0 24 24"
+                                    >
+                                        <path
+                                            strokeLinecap="round"
+                                            strokeLinejoin="round"
+                                            strokeWidth={2}
+                                            d="M5 10l7-7m0 0l7 7m-7-7v18"
+                                        />
+                                    </svg>
+                                </button>
                             </div>
+                            <p className="text-xs text-gray-500 dark:text-gray-600 text-center mt-3">
+                                Press Enter to send, Shift + Enter for new line
+                            </p>
+                        </form>
+                    </div>
+                </div>
 
-                            {/* Suggestion Cards */}
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 w-full max-w-2xl">
-                                <button
-                                    onClick={() => setInputValue('Plan a weekend trip to Paris')}
-                                    className="p-6 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl hover:border-gray-300 dark:hover:border-gray-700 transition-all text-left group"
-                                >
-                                    <div className="text-2xl mb-3">✈️</div>
-                                    <h3 className="font-medium text-black dark:text-white mb-2 group-hover:underline">
-                                        Plan a weekend trip
-                                    </h3>
-                                    <p className="text-sm text-gray-600 dark:text-gray-400">
-                                        Get flight, hotel, and activity recommendations
-                                    </p>
-                                </button>
-
-                                <button
-                                    onClick={() => setInputValue('Find trains from New York to Boston')}
-                                    className="p-6 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl hover:border-gray-300 dark:hover:border-gray-700 transition-all text-left group"
-                                >
-                                    <div className="text-2xl mb-3">🚂</div>
-                                    <h3 className="font-medium text-black dark:text-white mb-2 group-hover:underline">
-                                        Find transportation
-                                    </h3>
-                                    <p className="text-sm text-gray-600 dark:text-gray-400">
-                                        Search trains, flights, and buses
-                                    </p>
-                                </button>
-
-                                <button
-                                    onClick={() => setInputValue('Recommend hotels in Tokyo under $150/night')}
-                                    className="p-6 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl hover:border-gray-300 dark:hover:border-gray-700 transition-all text-left group"
-                                >
-                                    <div className="text-2xl mb-3">🏨</div>
-                                    <h3 className="font-medium text-black dark:text-white mb-2 group-hover:underline">
-                                        Find accommodations
-                                    </h3>
-                                    <p className="text-sm text-gray-600 dark:text-gray-400">
-                                        Discover hotels matching your budget
-                                    </p>
-                                </button>
-
-                                <button
-                                    onClick={() => setInputValue('What are the best restaurants in Rome?')}
-                                    className="p-6 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl hover:border-gray-300 dark:hover:border-gray-700 transition-all text-left group"
-                                >
-                                    <div className="text-2xl mb-3">🍽️</div>
-                                    <h3 className="font-medium text-black dark:text-white mb-2 group-hover:underline">
-                                        Discover food & activities
-                                    </h3>
-                                    <p className="text-sm text-gray-600 dark:text-gray-400">
-                                        Get top-rated recommendations
-                                    </p>
-                                </button>
+                {/* Right Column - Map Explorer */}
+                <div className="flex flex-col w-full lg:w-1/2 bg-gray-50 dark:bg-gray-950 overflow-hidden">
+                    {currentMapData ? (
+                        // Map with data
+                        <div className="flex-1 flex flex-col p-6 overflow-hidden">
+                            <div className="mb-4">
+                                <h2 className="text-2xl font-semibold text-black dark:text-white mb-2">
+                                    Route Map
+                                </h2>
+                                <div className="flex items-center gap-2 text-sm">
+                                    <span className="px-3 py-1 bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 rounded-full">
+                                        📍 {currentMapData.journey_details.origin}
+                                    </span>
+                                    <span className="text-gray-400">→</span>
+                                    <span className="px-3 py-1 bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400 rounded-full">
+                                        📍 {currentMapData.journey_details.destination}
+                                    </span>
+                                </div>
+                            </div>
+                            <div className="flex-1 flex items-center justify-center bg-white dark:bg-black rounded-2xl shadow-xl overflow-hidden">
+                                <img
+                                    src={currentMapData.map_image_url}
+                                    alt={`Route from ${currentMapData.journey_details.origin} to ${currentMapData.journey_details.destination}`}
+                                    className="w-full h-full object-contain"
+                                />
                             </div>
                         </div>
                     ) : (
-                        // Messages
-                        <div className="space-y-6 pb-32">
-                            {messages.map((message) => (
-                                <div
-                                    key={message.id}
-                                    className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
-                                >
-                                    <div
-                                        className={`max-w-[80%] rounded-2xl px-6 py-4 ${message.role === 'user'
-                                            ? 'bg-black dark:bg-white text-white dark:text-black'
-                                            : 'bg-gray-100 dark:bg-gray-900 text-black dark:text-white border border-gray-200 dark:border-gray-800'
-                                            }`}
-                                    >
-                                        <p className="text-sm leading-relaxed whitespace-pre-wrap">
-                                            {message.content}
-                                        </p>
-
-                                        {/* Display map image if available - Half screen layout */}
-                                        {message.role === 'assistant' && message.map_image_url && (
-                                            <div className="mt-6 -mx-6 -mb-4">
-                                                <div className="bg-gradient-to-br from-gray-50 to-gray-100 dark:from-gray-900 dark:to-gray-950 p-6 rounded-b-2xl border-t border-gray-200 dark:border-gray-700">
-                                                    <div className="flex flex-col items-center">
-                                                        <img
-                                                            src={message.map_image_url}
-                                                            alt={message.journey_details
-                                                                ? `Route from ${message.journey_details.origin} to ${message.journey_details.destination}`
-                                                                : 'Route Map'
-                                                            }
-                                                            className="w-full h-auto rounded-xl shadow-2xl"
-                                                            style={{
-                                                                maxHeight: '50vh',
-                                                                objectFit: 'contain'
-                                                            }}
-                                                        />
-                                                        {message.journey_details && (
-                                                            <div className="mt-4 px-6 py-3 bg-white dark:bg-black rounded-full shadow-lg">
-                                                                <p className="text-sm font-medium text-gray-700 dark:text-gray-300">
-                                                                    <span className="text-green-600 dark:text-green-400">📍 {message.journey_details.origin}</span>
-                                                                    {' '}
-                                                                    <span className="text-gray-400 dark:text-gray-600">→</span>
-                                                                    {' '}
-                                                                    <span className="text-red-600 dark:text-red-400">📍 {message.journey_details.destination}</span>
-                                                                </p>
-                                                            </div>
-                                                        )}
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        )}
+                        // Map Explorer Placeholder
+                        <div className="flex-1 flex items-center justify-center p-6">
+                            <div className="text-center max-w-md">
+                                <div className="mb-8 relative">
+                                    <div className="w-32 h-32 mx-auto bg-gradient-to-br from-blue-500 to-purple-600 rounded-3xl flex items-center justify-center shadow-2xl transform rotate-3 hover:rotate-6 transition-transform">
+                                        <svg className="w-16 h-16 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" />
+                                        </svg>
+                                    </div>
+                                    <div className="absolute -top-2 -right-2 w-8 h-8 bg-yellow-400 rounded-full animate-ping"></div>
+                                    <div className="absolute -bottom-2 -left-2 w-6 h-6 bg-green-400 rounded-full animate-pulse"></div>
+                                </div>
+                                <h2 className="text-3xl font-bold text-black dark:text-white mb-4">
+                                    Map Explorer
+                                </h2>
+                                <p className="text-gray-600 dark:text-gray-400 mb-6">
+                                    Ask about routes and destinations to see interactive maps appear here
+                                </p>
+                                <div className="space-y-3">
+                                    <div className="flex items-center justify-center gap-2 text-sm text-gray-500 dark:text-gray-500">
+                                        <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
+                                        <span>Real-time route visualization</span>
+                                    </div>
+                                    <div className="flex items-center justify-center gap-2 text-sm text-gray-500 dark:text-gray-500">
+                                        <div className="w-2 h-2 bg-purple-500 rounded-full"></div>
+                                        <span>Interactive journey details</span>
+                                    </div>
+                                    <div className="flex items-center justify-center gap-2 text-sm text-gray-500 dark:text-gray-500">
+                                        <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+                                        <span>Powered by Google Maps</span>
                                     </div>
                                 </div>
-                            ))}
-
-                            {isLoading && (
-                                <div className="flex justify-start">
-                                    <div className="bg-gray-100 dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-2xl px-6 py-4">
-                                        <div className="flex space-x-2">
-                                            <div className="w-2 h-2 bg-gray-400 dark:bg-gray-600 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
-                                            <div className="w-2 h-2 bg-gray-400 dark:bg-gray-600 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></div>
-                                            <div className="w-2 h-2 bg-gray-400 dark:bg-gray-600 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
-                                        </div>
-                                    </div>
-                                </div>
-                            )}
-
-                            <div ref={messagesEndRef} />
+                            </div>
                         </div>
                     )}
-                </div>
-            </main>
-
-            {/* Input Area */}
-            <div className="sticky bottom-0 bg-gradient-to-t from-white via-white to-transparent dark:from-black dark:via-black dark:to-transparent pt-8 pb-6">
-                <div className="max-w-4xl mx-auto px-6">
-                    <form onSubmit={handleSubmit} className="relative">
-                        <div className="relative bg-white dark:bg-black border-2 border-gray-200 dark:border-gray-800 rounded-2xl shadow-lg hover:border-gray-300 dark:hover:border-gray-700 transition-all focus-within:border-black dark:focus-within:border-white">
-                            <textarea
-                                ref={inputRef}
-                                value={inputValue}
-                                onChange={(e) => setInputValue(e.target.value)}
-                                onKeyDown={handleKeyDown}
-                                placeholder="Message Tour Planner AI..."
-                                rows={1}
-                                className="w-full px-6 py-4 pr-14 bg-transparent text-black dark:text-white placeholder-gray-400 dark:placeholder-gray-600 resize-none outline-none text-base"
-                                style={{
-                                    minHeight: '56px',
-                                    maxHeight: '200px',
-                                }}
-                            />
-                            <button
-                                type="submit"
-                                disabled={!inputValue.trim() || isLoading}
-                                className="absolute right-3 bottom-3 p-2 bg-black dark:bg-white text-white dark:text-black rounded-lg hover:bg-gray-800 dark:hover:bg-gray-200 disabled:opacity-30 disabled:cursor-not-allowed transition-all"
-                            >
-                                <svg
-                                    className="w-5 h-5"
-                                    fill="none"
-                                    stroke="currentColor"
-                                    viewBox="0 0 24 24"
-                                >
-                                    <path
-                                        strokeLinecap="round"
-                                        strokeLinejoin="round"
-                                        strokeWidth={2}
-                                        d="M5 10l7-7m0 0l7 7m-7-7v18"
-                                    />
-                                </svg>
-                            </button>
-                        </div>
-                        <p className="text-xs text-gray-500 dark:text-gray-600 text-center mt-3">
-                            Press Enter to send, Shift + Enter for new line
-                        </p>
-                    </form>
                 </div>
             </div>
         </div>
