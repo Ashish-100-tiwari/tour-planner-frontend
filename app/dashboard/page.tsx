@@ -29,8 +29,11 @@ export default function DashboardPage() {
     const [inputValue, setInputValue] = useState('');
     const [isLoading, setIsLoading] = useState(false);
     const [currentMapData, setCurrentMapData] = useState<MapData | null>(null);
+    const [apiZoomLevel, setApiZoomLevel] = useState(12); // Google Maps zoom level (8-18)
+    const [isLoadingMap, setIsLoadingMap] = useState(false);
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const inputRef = useRef<HTMLTextAreaElement>(null);
+    const mapContainerRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
         // Get user name from localStorage or session
@@ -223,6 +226,174 @@ export default function DashboardPage() {
         router.push('/');
     };
 
+    // Fetch map with specific zoom level from API
+    const fetchMapWithZoom = async (zoom: number) => {
+        if (!currentMapData) return;
+
+        setIsLoadingMap(true);
+        try {
+            const token = localStorage.getItem('token');
+            if (!token) {
+                throw new Error('No authentication token found');
+            }
+
+            const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+
+            console.log('Fetching map with zoom:', {
+                zoom,
+                origin: currentMapData.journey_details.origin,
+                destination: currentMapData.journey_details.destination,
+                endpoint: `${apiUrl}/v1/map/generate`
+            });
+
+            const response = await fetch(`${apiUrl}/v1/map/generate`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                },
+                body: JSON.stringify({
+                    origin: currentMapData.journey_details.origin,
+                    destination: currentMapData.journey_details.destination,
+                    zoom: zoom,
+                    size: "600x400"
+                })
+            });
+
+            console.log('Map API response status:', response.status);
+
+            if (!response.ok) {
+                if (response.status === 401) {
+                    localStorage.removeItem('token');
+                    localStorage.removeItem('userName');
+                    router.push('/auth/signin');
+                    return;
+                }
+
+                // Get error details
+                let errorDetail = '';
+                try {
+                    const errorData = await response.json();
+                    errorDetail = errorData.detail || errorData.message || JSON.stringify(errorData);
+                } catch {
+                    errorDetail = await response.text();
+                }
+
+                console.error('Map API error:', {
+                    status: response.status,
+                    detail: errorDetail
+                });
+
+                throw new Error(`API returned ${response.status}: ${errorDetail}`);
+            }
+
+            const data = await response.json();
+            console.log('Map API response data:', data);
+
+            if (data.map_image_url) {
+                setCurrentMapData({
+                    map_image_url: data.map_image_url,
+                    journey_details: currentMapData.journey_details
+                });
+                setApiZoomLevel(zoom);
+            } else {
+                throw new Error('No map_image_url in response');
+            }
+        } catch (error) {
+            console.error('Error fetching map with zoom:', error);
+
+            // Provide detailed error message
+            let errorMessage = 'Failed to update map zoom.\n\n';
+
+            if (error instanceof Error) {
+                if (error.message.includes('404')) {
+                    errorMessage += 'The backend endpoint /v1/map/generate is not available yet.\n\n';
+                    errorMessage += 'Please ensure the backend has been updated with the map zoom endpoint.';
+                } else if (error.message.includes('Failed to fetch') || error.message.includes('NetworkError')) {
+                    errorMessage += 'Cannot connect to the backend server.\n\n';
+                    errorMessage += 'Please check if the backend is running.';
+                } else {
+                    errorMessage += `Error: ${error.message}`;
+                }
+            }
+
+            alert(errorMessage);
+        } finally {
+            setIsLoadingMap(false);
+        }
+    };
+
+    const handleZoomIn = () => {
+        const newZoom = Math.min(apiZoomLevel + 1, 18);
+        if (newZoom !== apiZoomLevel) {
+            fetchMapWithZoom(newZoom);
+        }
+    };
+
+    const handleZoomOut = () => {
+        const newZoom = Math.max(apiZoomLevel - 1, 8);
+        if (newZoom !== apiZoomLevel) {
+            fetchMapWithZoom(newZoom);
+        }
+    };
+
+    const handleZoomReset = () => {
+        if (apiZoomLevel !== 12) {
+            fetchMapWithZoom(12);
+        }
+    };
+
+    // Reset zoom when map changes
+    useEffect(() => {
+        setApiZoomLevel(12);
+    }, [currentMapData?.journey_details.origin, currentMapData?.journey_details.destination]);
+
+    // Keyboard shortcuts for zoom
+    useEffect(() => {
+        const handleKeyPress = (e: KeyboardEvent) => {
+            // Only handle if not typing in an input/textarea
+            if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
+                return;
+            }
+
+            if (e.key === '+' || e.key === '=') {
+                e.preventDefault();
+                handleZoomIn();
+            } else if (e.key === '-' || e.key === '_') {
+                e.preventDefault();
+                handleZoomOut();
+            } else if (e.key === '0') {
+                e.preventDefault();
+                handleZoomReset();
+            }
+        };
+
+        window.addEventListener('keydown', handleKeyPress);
+        return () => window.removeEventListener('keydown', handleKeyPress);
+    }, [apiZoomLevel, currentMapData]);
+
+    // Mouse wheel scroll zoom
+    useEffect(() => {
+        const mapContainer = mapContainerRef.current;
+        if (!mapContainer || !currentMapData) return;
+
+        const handleWheel = (e: WheelEvent) => {
+            e.preventDefault();
+
+            // Determine zoom direction based on wheel delta
+            if (e.deltaY < 0) {
+                // Scroll up = zoom in
+                handleZoomIn();
+            } else if (e.deltaY > 0) {
+                // Scroll down = zoom out
+                handleZoomOut();
+            }
+        };
+
+        mapContainer.addEventListener('wheel', handleWheel, { passive: false });
+        return () => mapContainer.removeEventListener('wheel', handleWheel);
+    }, [apiZoomLevel, currentMapData]);
+
     return (
         <div className="h-screen bg-white dark:bg-black flex flex-col overflow-hidden">
             {/* Header */}
@@ -412,26 +583,81 @@ export default function DashboardPage() {
                     {currentMapData ? (
                         // Map with data
                         <div className="flex-1 flex flex-col p-6 overflow-hidden">
-                            <div className="mb-4">
-                                <h2 className="text-2xl font-semibold text-black dark:text-white mb-2">
-                                    Route Map
-                                </h2>
-                                <div className="flex items-center gap-2 text-sm">
-                                    <span className="px-3 py-1 bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 rounded-full">
-                                        📍 {currentMapData.journey_details.origin}
+                            <div className="mb-4 flex items-center justify-between">
+                                <div>
+                                    <h2 className="text-2xl font-semibold text-black dark:text-white mb-2">
+                                        Route Map
+                                    </h2>
+                                    <div className="flex items-center gap-2 text-sm">
+                                        <span className="px-3 py-1 bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 rounded-full">
+                                            📍 {currentMapData.journey_details.origin}
+                                        </span>
+                                        <span className="text-gray-400">→</span>
+                                        <span className="px-3 py-1 bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400 rounded-full">
+                                            📍 {currentMapData.journey_details.destination}
+                                        </span>
+                                    </div>
+                                </div>
+
+                                {/* Zoom Controls */}
+                                <div className="flex items-center gap-2">
+                                    <span className="text-xs text-gray-500 dark:text-gray-400 mr-2">
+                                        Zoom: {apiZoomLevel}
                                     </span>
-                                    <span className="text-gray-400">→</span>
-                                    <span className="px-3 py-1 bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400 rounded-full">
-                                        📍 {currentMapData.journey_details.destination}
-                                    </span>
+                                    <button
+                                        onClick={handleZoomOut}
+                                        disabled={apiZoomLevel <= 8 || isLoadingMap}
+                                        className="p-2 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-30 disabled:cursor-not-allowed transition-all"
+                                        title="Zoom Out (- key)"
+                                    >
+                                        <svg className="w-5 h-5 text-black dark:text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0zM13 10H7" />
+                                        </svg>
+                                    </button>
+                                    <button
+                                        onClick={handleZoomReset}
+                                        disabled={apiZoomLevel === 12 || isLoadingMap}
+                                        className="px-3 py-2 text-xs bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-30 disabled:cursor-not-allowed transition-all text-black dark:text-white font-medium"
+                                        title="Reset Zoom (0 key)"
+                                    >
+                                        Reset
+                                    </button>
+                                    <button
+                                        onClick={handleZoomIn}
+                                        disabled={apiZoomLevel >= 18 || isLoadingMap}
+                                        className="p-2 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-30 disabled:cursor-not-allowed transition-all"
+                                        title="Zoom In (+ key)"
+                                    >
+                                        <svg className="w-5 h-5 text-black dark:text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0zM10 7v6m3-3H7" />
+                                        </svg>
+                                    </button>
                                 </div>
                             </div>
-                            <div className="flex-1 flex items-center justify-center bg-white dark:bg-black rounded-2xl shadow-xl overflow-hidden">
-                                <img
-                                    src={currentMapData.map_image_url}
-                                    alt={`Route from ${currentMapData.journey_details.origin} to ${currentMapData.journey_details.destination}`}
-                                    className="w-full h-full object-contain"
-                                />
+                            <div
+                                ref={mapContainerRef}
+                                className="flex-1 bg-white dark:bg-black rounded-2xl shadow-xl overflow-hidden relative"
+                            >
+                                {/* Loading Overlay */}
+                                {isLoadingMap && (
+                                    <div className="absolute inset-0 bg-white/80 dark:bg-black/80 backdrop-blur-sm flex items-center justify-center z-10">
+                                        <div className="flex flex-col items-center gap-3">
+                                            <div className="w-12 h-12 border-4 border-gray-200 dark:border-gray-700 border-t-black dark:border-t-white rounded-full animate-spin"></div>
+                                            <p className="text-sm text-gray-600 dark:text-gray-400">Updating map...</p>
+                                        </div>
+                                    </div>
+                                )}
+
+                                <div className="w-full h-full flex items-center justify-center overflow-auto">
+                                    <img
+                                        src={currentMapData.map_image_url}
+                                        alt={`Route from ${currentMapData.journey_details.origin} to ${currentMapData.journey_details.destination}`}
+                                        className="w-full h-full object-contain transition-opacity duration-300"
+                                        style={{
+                                            opacity: isLoadingMap ? 0.5 : 1
+                                        }}
+                                    />
+                                </div>
                             </div>
                         </div>
                     ) : (
